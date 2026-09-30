@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light" data-color-scheme="kr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KRX ETF Radar | 네이버 증권 ETF 실시간 종합 EDA 대시보드</title>
+  <meta name="description" content="네이버 증권 API 기반 국내 상장 ETF 전종목(1,100+) 실시간 수집 및 시장구조, 유동성, 수익률, iNAV 괴리율 종합 탐색적 데이터 분석(EDA) 대시보드">
+  
+  <!-- Font & Icons -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- Chart.js 4.4.x -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="spinner"></div>
+    <div id="loadingText" class="loading-text">ETF 시장 데이터 수집 중...</div>
+    <div id="loadingProgress" class="loading-progress">네이버 증권 API 연결 중...</div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="container header-content">
+      <div class="logo-area">
+        <div class="logo-icon">📊</div>
+        <div>
+          <div class="logo-title">
+            KRX ETF Radar
+            <span class="logo-badge">실시간 종합 EDA</span>
+          </div>
+          <div class="logo-subtitle">네이버 증권 전종목 실시간 분석 & 진단 대시보드</div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Live Status Badge -->
+        <div id="liveStatusBadge" class="status-badge" title="데이터 동기화 상태">
+          <span class="status-dot pulsing"></span>
+          <span id="syncStatusText">동기화 완료 (1,171 종목)</span>
+        </div>
+
+        <!-- Refresh Button -->
+        <button id="refreshBtn" class="btn btn-primary" title="네이버 증권 실시간 데이터 새로고침">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          실시간 갱신
+        </button>
+
+        <!-- Color Scheme Toggle (KR vs Global) -->
+        <button id="colorSchemeBtn" class="btn btn-outline" title="등락 색상 모드 (한국: 빨강 상승 / 글로벌: 초록 상승)">
+          <span id="colorSchemeLabel">🇰🇷 한국식 색상</span>
+        </button>
+
+        <!-- Theme Toggle Button -->
+        <button id="themeToggleBtn" class="btn-icon" title="다크/라이트 모드 전환" aria-label="테마 전환">
+          <svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+
+        <!-- Export CSV Button -->
+        <button id="exportCsvBtn" class="btn btn-outline" title="전체 데이터 CSV 다운로드">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          CSV
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Top KPI Summary Cards -->
+    <section class="kpi-grid" id="kpiGrid">
+      <div class="kpi-card accent-blue">
+        <div class="kpi-header">
+          <span class="kpi-title">전체 상장 ETF</span>
+          <span class="kpi-icon">📋</span>
+        </div>
+        <div class="kpi-value" id="kpiTotalCount">-</div>
+        <div class="kpi-subtext" id="kpiMovementRatio">상승 - | 하락 - | 보합 -</div>
+      </div>
+
+      <div class="kpi-card accent-gold">
+        <div class="kpi-header">
+          <span class="kpi-title">총 순자산총액 (AUM)</span>
+          <span class="kpi-icon">💰</span>
+        </div>
+        <div class="kpi-value" id="kpiTotalAum">-</div>
+        <div class="kpi-subtext" id="kpiAvgAum">종목당 평균 -</div>
+      </div>
+
+      <div class="kpi-card accent-blue">
+        <div class="kpi-header">
+          <span class="kpi-title">당일 총 거래대금</span>
+          <span class="kpi-icon">⚡</span>
+        </div>
+        <div class="kpi-value" id="kpiTotalTradingVal">-</div>
+        <div class="kpi-subtext" id="kpiTradingAumRatio">AUM 대비 회전율 -</div>
+      </div>
+
+      <div class="kpi-card" id="kpiDailyReturnCard">
+        <div class="kpi-header">
+          <span class="kpi-title">평균 당일 등락률</span>
+          <span class="kpi-icon">📈</span>
+        </div>
+        <div class="kpi-value" id="kpiAvgChangeRate">-</div>
+        <div class="kpi-subtext" id="kpiMarketSentiment">시장 심리: -</div>
+      </div>
+
+      <div class="kpi-card accent-gold">
+        <div class="kpi-header">
+          <span class="kpi-title">평균 iNAV 괴리율</span>
+          <span class="kpi-icon">⚖️</span>
+        </div>
+        <div class="kpi-value" id="kpiAvgDisparity">-</div>
+        <div class="kpi-subtext" id="kpiDisparityOutliers">괴리율 ±1% 초과 -건</div>
+      </div>
+
+      <div class="kpi-card accent-blue">
+        <div class="kpi-header">
+          <span class="kpi-title">1위 운용사 점유율</span>
+          <span class="kpi-icon">🏆</span>
+        </div>
+        <div class="kpi-value" id="kpiTopManager">-</div>
+        <div class="kpi-subtext" id="kpiTopManagerShare">AUM 기준 점유율 -%</div>
+      </div>
+    </section>
+
+    <!-- SECTION 1: 시장 구조 및 운용사 점유율 분석 -->
+    <div class="section-title-wrap">
+      <div>
+        <h2 class="section-title">
+          <span class="section-title-badge">SECTION 01</span>
+          시장 구조 및 운용사 점유율 분석
+        </h2>
+        <p class="section-desc">국내 ETF 시장을 이끄는 주요 자산운용사(KODEX, TIGER, ACE, RISE 등)의 순자산(AUM) 점유율 및 자산군별 비중을 분석합니다.</p>
+      </div>
+    </div>
+
+    <div class="grid-2-1">
+      <!-- Card 1: 운용사 AUM 점유율 도넛 차트 -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">운용사별 순자산(AUM) 점유율</div>
+            <div class="chart-subtitle">전체 순자산총액 기준 상위 운용사 점유 비율</div>
+          </div>
+          <div class="tab-group" id="marketShareTypeTabs">
+            <button class="tab-btn active" data-metric="aum">AUM 점유율</button>
+            <button class="tab-btn" data-metric="count">종목 수 점유율</button>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartManagerShare"></canvas>
+        </div>
+        <div class="insight-box" id="insightManagerShare">
+          분석 중...
+        </div>
+      </div>
+
+      <!-- Card 2: 자산군 대분류 비중 가로 바 차트 -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">자산군 유형별 순자산 비중</div>
+            <div class="chart-subtitle">국내/해외 주식, 채권, 파생, 혼합형 규모</div>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartAssetType"></canvas>
+        </div>
+        <div class="insight-box" id="insightAssetType">
+          분석 중...
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 2: 유동성 및 자산 규모 (AUM vs 거래대금) EDA -->
+    <div class="section-title-wrap">
+      <div>
+        <h2 class="section-title">
+          <span class="section-title-badge">SECTION 02</span>
+          유동성 및 자산 규모 (AUM vs 거래대금) 산점도
+        </h2>
+        <p class="section-desc">순자산 규모(AUM)와 실제 일일 거래대금의 상관관계를 통해 유동성 프리미엄과 자금 쏠림 현상을 탐색합니다.</p>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Card 1: 산점도 (Scatter Chart) -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">AUM vs 일일 거래대금 유동성 산점도</div>
+            <div class="chart-subtitle">X축: 순자산총액(억원) / Y축: 일일 거래대금(억원)</div>
+          </div>
+          <div class="tab-group" id="scatterScaleTabs">
+            <button class="tab-btn active" data-scale="log">로그 스케일</button>
+            <button class="tab-btn" data-scale="linear">선형 스케일</button>
+          </div>
+        </div>
+        <div class="chart-container tall">
+          <canvas id="chartLiquidityScatter"></canvas>
+        </div>
+        <div class="insight-box" id="insightScatter">
+          분석 중...
+        </div>
+      </div>
+
+      <!-- Card 2: AUM Top 10 vs 거래대금 Top 10 랭킹 차트 -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title" id="rankingChartTitle">순자산총액(AUM) Top 10 종목</div>
+            <div class="chart-subtitle">국내 ETF 시장을 대표하는 초대형 종목</div>
+          </div>
+          <div class="tab-group" id="rankingTabs">
+            <button class="tab-btn active" data-type="aum">AUM Top 10</button>
+            <button class="tab-btn" data-type="tradingValue">거래대금 Top 10</button>
+            <button class="tab-btn" data-type="turnover">회전율 Top 10</button>
+          </div>
+        </div>
+        <div class="chart-container tall">
+          <canvas id="chartTop10Ranking"></canvas>
+        </div>
+        <div class="insight-box" id="insightRanking">
+          분석 중...
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 3: 다각적 수익률 분포 및 성과 분석 -->
+    <div class="section-title-wrap">
+      <div>
+        <h2 class="section-title">
+          <span class="section-title-badge">SECTION 03</span>
+          다각적 수익률 분포 및 기간별 성과 분석
+        </h2>
+        <p class="section-desc">1개월, 3개월, 6개월 및 당일 등락률의 통계적 분포(정규분포/왜도)와 최고/최저 성과 종목을 비교합니다.</p>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Card 1: 수익률 분포 히스토그램 (Bar Chart) -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title" id="histChartTitle">1개월 수익률 빈도 분포 (히스토그램)</div>
+            <div class="chart-subtitle">구간별 종목 분포 밀도 및 시장 수익률 쏠림 현상</div>
+          </div>
+          <div class="tab-group" id="returnPeriodTabs">
+            <button class="tab-btn active" data-period="1m">1개월</button>
+            <button class="tab-btn" data-period="3m">3개월</button>
+            <button class="tab-btn" data-period="6m">6개월</button>
+            <button class="tab-btn" data-period="daily">당일</button>
+          </div>
+        </div>
+        <div class="chart-container tall">
+          <canvas id="chartReturnHistogram"></canvas>
+        </div>
+        <div class="insight-box" id="insightHistogram">
+          분석 중...
+        </div>
+      </div>
+
+      <!-- Card 2: 기간별 Top 7 & Bottom 7 바 차트 -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title" id="performanceRankingTitle">1개월 수익률 최고 & 최저 종목</div>
+            <div class="chart-subtitle">선택 기간 동안 극단적 초과수익/손실을 기록한 종목군</div>
+          </div>
+        </div>
+        <div class="chart-container tall">
+          <canvas id="chartReturnExtremes"></canvas>
+        </div>
+        <div class="insight-box" id="insightExtremes">
+          분석 중...
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 4: iNAV 괴리율 및 리스크 진단 -->
+    <div class="section-title-wrap">
+      <div>
+        <h2 class="section-title">
+          <span class="section-title-badge">SECTION 04</span>
+          iNAV 괴리율 및 추종 위험 진단
+        </h2>
+        <p class="section-desc">실시간 순자산가치(iNAV)와 현재 시장가격 간의 괴리율(Disparity Rate)을 분석하여 고평가/저평가 및 추종 이상(Outlier) 리스크를 탐지합니다.</p>
+      </div>
+    </div>
+
+    <div class="grid-3">
+      <!-- Card 1: 괴리율 구간별 분포 차트 -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">iNAV 괴리율 구간 분포</div>
+            <div class="chart-subtitle">정상 범위(±1% 이내) vs 주의/경고 구간</div>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartDisparityDist"></canvas>
+        </div>
+        <div class="insight-box" id="insightDisparityDist">
+          분석 중...
+        </div>
+      </div>
+
+      <!-- Card 2: 당일 가격 변동 심리 (상승/하락/보합) -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">시장 등락 심리 비율</div>
+            <div class="chart-subtitle">상승 / 하락 / 보합 종목 비율</div>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartPriceMovementPie"></canvas>
+        </div>
+        <div class="insight-box" id="insightMovement">
+          분석 중...
+        </div>
+      </div>
+
+      <!-- Card 3: 괴리율 이상치(Outlier) 경고 리스트 -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">⚠️ 괴리율 이상치(Outlier) 경고</div>
+            <div class="chart-subtitle">괴리율 절대값 상위 종목 (추종 장애/주의)</div>
+          </div>
+        </div>
+        <div class="outlier-card-list" id="outlierList">
+          <!-- Outliers populated dynamically -->
+        </div>
+        <div class="insight-box" style="margin-top: 10px;">
+          * 러시아 ETF 등 해외 자산 동결 또는 유동성 공급 부재 종목은 극심한 괴리율이 발생하므로 투자 시 각별한 주의가 요구됩니다.
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 5: 전종목 인터랙티브 탐색기 & 데이터 테이블 -->
+    <div class="section-title-wrap">
+      <div>
+        <h2 class="section-title">
+          <span class="section-title-badge">SECTION 05</span>
+          전종목 인터랙티브 탐색기 & 필터링 테이블
+        </h2>
+        <p class="section-desc">국내 상장 <strong id="section5DescCount">1,171개 전종목</strong> ETF를 다차원 필터, 실시간 검색, 컬럼별 정렬, 상세 진단 모달을 통해 종합 탐색하고 분석합니다.</p>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <!-- Filter Bar -->
+      <div class="filter-bar">
+        <!-- Search and Dropdowns Row -->
+        <div class="filter-row">
+          <div class="search-input-wrap">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="searchInput" class="search-input" placeholder="ETF 종목명 또는 6자리 코드 검색 (예: 반도체, S&P500, 069500)">
+          </div>
+
+          <!-- Manager / Brand Filter -->
+          <select id="managerFilter" class="select-custom">
+            <option value="">모든 운용사 (전체)</option>
+            <!-- Options populated dynamically -->
+          </select>
+
+          <!-- Asset Type Filter -->
+          <select id="typeFilter" class="select-custom">
+            <option value="">모든 자산 유형 (전체)</option>
+            <!-- Options populated dynamically -->
+          </select>
+
+          <!-- Reset Filter Button -->
+          <button id="resetFilterBtn" class="btn btn-outline" title="필터 초기화">
+            초기화
+          </button>
+        </div>
+
+        <!-- Filter Chips Row -->
+        <div class="filter-row">
+          <div class="filter-chips" id="movementChips">
+            <span class="filter-chip-label">가격 변동:</span>
+            <button class="chip active" data-movement="all">전체</button>
+            <button class="chip" data-movement="rising">상승 종목만</button>
+            <button class="chip" data-movement="falling">하락 종목만</button>
+            <button class="chip" data-movement="steady">보합</button>
+          </div>
+
+          <div class="filter-chips" id="disparityChips" style="margin-left: 12px;">
+            <span class="filter-chip-label">괴리율 상태:</span>
+            <button class="chip active" data-disp="all">전체</button>
+            <button class="chip" data-disp="normal">정상 (±1% 이내)</button>
+            <button class="chip" data-disp="warning">주의 (±1% 초과)</button>
+            <button class="chip" data-disp="danger">경고 (±3% 초과)</button>
+          </div>
+
+          <div class="filter-chips" id="scaleChips" style="margin-left: 12px;">
+            <span class="filter-chip-label">규모 필터:</span>
+            <button class="chip active" data-scale="all">전체</button>
+            <button class="chip" data-scale="mega">AUM 1조원 이상</button>
+            <button class="chip" data-scale="large">AUM 1,000억원 이상</button>
+            <button class="chip" data-scale="liquid">거래대금 100억원 이상</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Table -->
+      <div class="table-responsive">
+        <table class="data-table" id="etfTable">
+          <thead>
+            <tr>
+              <th data-sort="itemCode" class="text-center">코드</th>
+              <th data-sort="itemName">종목명</th>
+              <th data-sort="manager">운용사</th>
+              <th data-sort="etfType">자산 분류</th>
+              <th data-sort="currentPrice" class="text-right">현재가(원)</th>
+              <th data-sort="changeRate" class="text-right">전일대비(등락률)</th>
+              <th data-sort="tradingValue" class="text-right">거래대금(원)</th>
+              <th data-sort="totalNetAssets" class="text-right sort-active">순자산(AUM) ▼</th>
+              <th data-sort="iNav" class="text-right">iNAV</th>
+              <th data-sort="disparityRate" class="text-right">괴리율</th>
+              <th data-sort="returnRate1m" class="text-right">1개월</th>
+              <th data-sort="returnRate3m" class="text-right">3개월</th>
+              <th data-sort="returnRate6m" class="text-right">6개월</th>
+              <th class="text-center">진단</th>
+            </tr>
+          </thead>
+          <tbody id="etfTableBody">
+            <!-- Table rows populated dynamically -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination Bar -->
+      <div class="pagination-bar">
+        <div class="page-info" id="tablePageInfo">
+          검색 결과: 총 0개 종목 중 0 - 0 표시
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <select id="pageSizeSelect" class="select-custom" style="height: 34px; padding: 0 28px 0 10px; font-size: 12px;">
+            <option value="15">15개씩 보기</option>
+            <option value="30">30개씩 보기</option>
+            <option value="50">50개씩 보기</option>
+            <option value="100">100개씩 보기</option>
+          </select>
+
+          <div class="page-controls" id="pageControls">
+            <!-- Dynamic page buttons -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ETF Detailed Diagnosis Modal -->
+  <div id="etfModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-title">
+            <span id="modalItemName">-</span>
+            <span id="modalItemCode" class="badge-brand">-</span>
+          </div>
+          <div style="display: flex; gap: 8px; font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+            <span id="modalManager">-</span>
+            <span>•</span>
+            <span id="modalType">-</span>
+          </div>
+        </div>
+        <button id="modalCloseBtn" class="btn-icon" aria-label="닫기">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-grid-2">
+          <div class="modal-stat-box">
+            <div class="modal-stat-label">현재가 / 전일대비</div>
+            <div class="modal-stat-val" id="modalPrice">-</div>
+            <div style="font-size: 13px; margin-top: 4px;" id="modalChangeRate">-</div>
+          </div>
+          <div class="modal-stat-box">
+            <div class="modal-stat-label">iNAV / 괴리율 진단</div>
+            <div class="modal-stat-val" id="modalNav">-</div>
+            <div style="font-size: 13px; margin-top: 4px;" id="modalDisparity">-</div>
+          </div>
+          <div class="modal-stat-box">
+            <div class="modal-stat-label">순자산총액 (AUM)</div>
+            <div class="modal-stat-val" id="modalAum">-</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" id="modalAumRank">시장 전체 순위: -</div>
+          </div>
+          <div class="modal-stat-box">
+            <div class="modal-stat-label">당일 거래량 / 거래대금</div>
+            <div class="modal-stat-val" id="modalTradingVal">-</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" id="modalTradingVol">거래량: -주</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 14px; margin-bottom: 8px; font-weight: 700; font-size: 14px;">
+          기간별 수익률 프로파일
+        </div>
+        <div class="modal-grid-2">
+          <div class="modal-stat-box">
+            <div class="modal-stat-label">1개월 수익률</div>
+            <div class="modal-stat-val" id="modalReturn1m">-</div>
+          </div>
+          <div class="modal-stat-box">
+            <div class="modal-stat-label">3개월 수익률</div>
+            <div class="modal-stat-val" id="modalReturn3m">-</div>
+          </div>
+          <div class="modal-stat-box">
+            <div class="modal-stat-label">6개월 수익률</div>
+            <div class="modal-stat-val" id="modalReturn6m">-</div>
+          </div>
+          <div class="modal-stat-box">
+            <div class="modal-stat-label">일일 회전율 (유동성)</div>
+            <div class="modal-stat-val" id="modalTurnover">-</div>
+          </div>
+        </div>
+
+        <div class="insight-box" id="modalDiagnosisNote" style="margin-top: 14px;">
+          진단 의견 준비 중...
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <a id="modalNaverLink" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-outline">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+          네이버 증권 상세 보기
+        </a>
+        <button id="modalConfirmBtn" class="btn btn-primary">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <p>데이터 출처: 네이버 증권 국내 ETF API (<a href="https://stock.naver.com" target="_blank" rel="noopener" style="text-decoration: underline;">stock.naver.com</a>) • 본 대시보드는 정보 제공 및 탐색적 데이터 분석(EDA) 목적으로 제작되었으며, 투자 권유가 아닙니다.</p>
+      <p style="margin-top: 6px; font-size: 12px; color: var(--text-muted);">KRX ETF Radar Dashboard • Powered by Chart.js & Vanilla CSS/JS</p>
+    </div>
+  </footer>
+
+  <!-- Embedded fallback snapshot data (allows zero-config instant load on file:// or CORS restricted environments) -->
+  <script src="data/etf_data.js"></script>
+
+  <!-- Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
